@@ -1,11 +1,15 @@
 import altair as alt
 import pandas as pd
 import streamlit as st
+import matplotlib.pyplot as plt
 from typing import List, Tuple
+from pybaseball.plotting import plot_strike_zone
 
 # Show the page title and description.
-st.set_page_config(page_title="The Long Ball", page_icon="🎬")
-st.title("🎬 The Long Ball")
+st.set_page_config(page_title="The Long Ball", page_icon="⚾",layout="wide",
+        initial_sidebar_state="expanded")
+st.sidebar.header("Filters")
+st.title("⚾ The Long Ball")
 st.write(
     """
     This app lets you examine pitcher-batter matchups to determine the likelyhood of
@@ -30,20 +34,19 @@ def display_kpi_metrics(kpis: List[float], kpi_names: List[str]):
 def calculate_kpis(data: pd.DataFrame) -> List[float]:
     avg_release_speed = data['release_speed'].mean().round(2)
     avg_release_pos_x = data['release_pos_x'].mean().round(2)
+    avg_release_pos_y = data['release_pos_x'].mean().round(2)
     return [avg_release_speed, avg_release_pos_x]
 
 
 df = load_data()
 
-
-
 # Show a multiselect widget with the genres using `st.multiselect`.
-pitchers = st.multiselect(
+pitchers = st.sidebar.multiselect(
     "Pitcher",
     df.pitcher.unique()
 )
 
-events = st.multiselect(
+events = st.sidebar.multiselect(
     "Events",
     df.events.unique()
 )
@@ -52,16 +55,25 @@ events = st.multiselect(
 # Filter the dataframe based on the widget input and reshape it.
 df_filtered = df[(df["pitcher"].isin(pitchers)) & (df["events"].isin(events))]
 
-kpis = calculate_kpis(df_filtered)
-kpi_names = ["AVG RELEASE SPEED",'AVG RELEASE POS X']
-display_kpi_metrics(kpis, kpi_names)
+try:
+    kpis = calculate_kpis(df_filtered)
+    kpi_names = ["AVG RELEASE SPEED",'AVG RELEASE POS X']
+    display_kpi_metrics(kpis, kpi_names)
+
+    # fig, ax = plt.subplots()
+    # plot_strike_zone(df_filtered, title = "Outcome", colorby='release_speed', annotation="events",axis=ax)
+    # st.pyplot(fig)
+
+except:
+
+    print("nothing to see here...")
 
 
 # Display the data as a table using `st.dataframe`.
 st.dataframe(
     df_filtered,
     use_container_width=True,
-    column_config={"year": st.column_config.TextColumn("Year")},
+    hide_index=True
 )
 
 chart = (
@@ -69,4 +81,5 @@ chart = (
     .mark_line()
     .properties(height=320)
 )
+
 st.altair_chart(chart, use_container_width=True)
