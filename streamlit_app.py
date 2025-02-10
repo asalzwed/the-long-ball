@@ -12,8 +12,7 @@ st.sidebar.header("Filters")
 st.title("⚾ The Long Ball")
 st.write(
     """
-    This app lets you examine pitcher-batter matchups to determine the likelyhood of
-    a homerun.
+    This app lets you examine pitcher-batter matchups with an emphasis on home run potential. 
     """
 )
 
@@ -25,59 +24,64 @@ def load_data():
     df = pd.read_csv("data/test_data.csv")
     return df
 
-def display_kpi_metrics(kpis: List[float], kpi_names: List[str]):
+def display_kpi_metrics(series: pd.Series):
+
+    kpis = series.values
+    kpi_names = series.index
     st.header("KPI Metrics")
-    for i, (col, (kpi_name, kpi_value)) in enumerate(zip(st.columns(4), zip(kpi_names, kpis))):
+    for i, (col, (kpi_name, kpi_value)) in enumerate(zip(st.columns(len(kpi_names)), zip(kpi_names, kpis))):
         col.metric(label=kpi_name, value=kpi_value)
+
 
 @st.cache_data
 def calculate_kpis(data: pd.DataFrame) -> List[float]:
-    avg_release_speed = data['release_speed'].mean().round(2)
-    avg_release_pos_x = data['release_pos_x'].mean().round(2)
-    avg_release_pos_y = data['release_pos_x'].mean().round(2)
-    return [avg_release_speed, avg_release_pos_x]
+    #Categorical Values
+    kpis = data.agg({'pitch_name':lambda x: x.mode().iloc[0], 
+              'zone':lambda x: x.mode().iloc[0],
+              'release_speed':'mean'
+    })
 
+
+    return kpis
 
 df = load_data()
 
-# Show a multiselect widget with the genres using `st.multiselect`.
-pitchers = st.sidebar.multiselect(
+# Show a single select widget for pitchers.
+pitcher = st.sidebar.selectbox(
     "Pitcher",
-    df.pitcher.unique()
-)
-
-events = st.sidebar.multiselect(
-    "Events",
-    df.events.unique()
+    df.pitcher.unique(),
+    placeholder="Select a pitcher to analyze...",
+    help=None
 )
 
 
 # Filter the dataframe based on the widget input and reshape it.
-df_filtered = df[(df["pitcher"].isin(pitchers)) & (df["events"].isin(events))]
-
-try:
-    kpis = calculate_kpis(df_filtered)
-    kpi_names = ["AVG RELEASE SPEED",'AVG RELEASE POS X']
-    display_kpi_metrics(kpis, kpi_names)
-
-    # fig, ax = plt.subplots()
-    # plot_strike_zone(df_filtered, title = "Outcome", colorby='release_speed', annotation="events",axis=ax)
-    # st.pyplot(fig)
-
-except:
-
-    print("nothing to see here...")
+#df_filtered = df[(df["pitcher"].isin(pitchers))]
+pitcher_df = df[(df["pitcher"]==pitcher)]
+#start_date = pd.Timestamp(st.sidebar.date_input("Start date", df_filtered['game_date'].min().date()))
+#end_date = pd.Timestamp(st.sidebar.date_input("End date", df_filtered['game_date'].max().date()))
 
 
-# Display the data as a table using `st.dataframe`.
+kpis = calculate_kpis(pitcher_df.loc[pitcher_df.events=='home_run'])
+
+kpi_names = ["HRs","HRs/X","AVG RELEASE SPEED",'AVG RELEASE POS X']
+#display_kpi_metrics(kpis, kpi_names)
+display_kpi_metrics(kpis)
+# fig, ax = plt.subplots()
+# plot_strike_zone(df_filtered, title = "Outcome", colorby='release_speed', annotation="events",axis=ax)
+# st.pyplot(fig)
+
+
+
+#Display the data as a table using `st.dataframe`.
 st.dataframe(
-    df_filtered,
+    pitcher_df,
     use_container_width=True,
     hide_index=True
 )
 
 chart = (
-    alt.Chart(df_filtered)
+    alt.Chart(pitcher_df)
     .mark_line()
     .properties(height=320)
 )
