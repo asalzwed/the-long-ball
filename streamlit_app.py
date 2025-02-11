@@ -7,7 +7,6 @@ from typing import List, Tuple
 from pybaseball.plotting import plot_strike_zone
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
-from scipy.spatial.distance import mahalanobis
 
 
 cont_pitch_measures = [
@@ -37,7 +36,8 @@ st.write(
 # reruns (e.g. if the user interacts with the widgets).
 @st.cache_data
 def load_data():
-    df = pd.read_csv("data/test_data.csv")
+    #df = pd.read_csv("data/restricted_data.csv")
+    df = pd.read_parquet("data/restricted_data.parquet")
     def is_barrel(launch_speed, launch_angle):
         """Return 1 if the batted ball is classified as a barrel, else 0"""
         if launch_speed >= 98:
@@ -92,8 +92,8 @@ def compute_pitch_attributes(df: pd.DataFrame, encoder: OneHotEncoder, scaler: S
     if ptype == 'batter':
         pindex = df[(df.batter.isin(ids)) & (df.barreled==1)].index
     else:
-        pindex = df[(df.pitcher.isin(ids)) & (df.barreled==1)].index
-        #pindex = df[(df.pitcher.isin(ids))].index
+        #pindex = df[(df.pitcher.isin(ids)) & (df.barreled==1)].index
+        pindex = df[(df.pitcher.isin(ids))].index
 
     # Aggregate pitch characteristics
     cont_mean = df.loc[pindex].groupby(ptype)[cont_pitch_measures].mean()
