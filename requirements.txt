@@ -1,2 +1,6 @@
 streamlit
 pybaseball
+sklearn
+pandas
+altair
+matplotlib
