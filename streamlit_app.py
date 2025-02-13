@@ -8,7 +8,6 @@ from pybaseball.plotting import plot_strike_zone
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
 
-
 cont_pitch_measures = [
         "release_speed", "release_pos_x", "release_pos_y", "release_pos_z","balls",
         "strikes","pfx_x","pfx_z","plate_x","plate_z","inning",
@@ -19,7 +18,6 @@ cont_pitch_measures = [
     ]
 
 cat_pitch_measures = ["pitch_type","zone","stand","p_throws","type"]
-
 
 # Show the page title and description.
 st.set_page_config(page_title="The Long Ball", page_icon="⚾",layout="wide",
@@ -66,24 +64,6 @@ def encoder_scaler(df: pd.DataFrame):
     
     return encoder, scaler
 
-df = load_data()
-encoder, scaler = encoder_scaler(df)
-
-# Show a single select widget for pitchers.
-pitcher = st.sidebar.selectbox(
-    "Pitcher",
-    df.pitcher.unique(),
-    placeholder="Select a pitcher to analyze...",
-    help=None
-)
-batter = st.sidebar.multiselect(
-    "Batter",
-    df.batter.unique(),
-    placeholder="Select a batter to analyze...",
-    help=None
-)
-
-
 def compute_pitch_attributes(df: pd.DataFrame, encoder: OneHotEncoder, scaler: StandardScaler, ids: List, ptype='pitcher'):
     """
     In progress...
@@ -92,8 +72,8 @@ def compute_pitch_attributes(df: pd.DataFrame, encoder: OneHotEncoder, scaler: S
     if ptype == 'batter':
         pindex = df[(df.batter.isin(ids)) & (df.barreled==1)].index
     else:
-        #pindex = df[(df.pitcher.isin(ids)) & (df.barreled==1)].index
-        pindex = df[(df.pitcher.isin(ids))].index
+        pindex = df[(df.pitcher.isin(ids)) & (df.barreled==1)].index
+        #pindex = df[(df.pitcher.isin(ids))].index
 
     # Aggregate pitch characteristics
     cont_mean = df.loc[pindex].groupby(ptype)[cont_pitch_measures].mean()
@@ -110,39 +90,54 @@ def compute_pitch_attributes(df: pd.DataFrame, encoder: OneHotEncoder, scaler: S
     raw_profiles = pd.concat([cat_mode,cont_mean],axis=1)
     stat_profiles = pd.concat([encoded_mean_df,scaled_mean_df],axis=1)
    
-    return raw_profiles, stat_profiles
+    return raw_profiles.round(2), stat_profiles.round(2)
 
-pitcher_att, pitcher_es = compute_pitch_attributes(df, encoder, scaler, [pitcher])
-batter_att, batter_es = compute_pitch_attributes(df, encoder, scaler, batter,'batter')
-cos_sim_score = cosine_similarity(pitcher_es, batter_es)#[0][0]
-print(cos_sim_score)
+def player_card(name, ban):
+    """Reusable Player Card Component"""
+    
+    with st.container():
+       
+        # Player Info
+        st.markdown(f"### {name}")
+        
+        # Metrics Section
+        st.metric("Barrel Score", round(ban,2))
+        
 
-#Display the data as a table using `st.dataframe`.
-st.dataframe(
-    pitcher_es,
-    use_container_width=True,
-    hide_index=True
-)
+df = load_data()
+encoder, scaler = encoder_scaler(df)
+try: 
 
-chart = (
-    alt.Chart(pitcher_es)
-    .mark_line()
-    .properties(height=320)
-)
+    pitcher = st.sidebar.selectbox(
+        "Pitcher",
+        df.pitcher.unique(),
+        placeholder="Select a pitcher to analyze...",
+        help=None
+    )
+    batter = st.sidebar.multiselect(
+        "Batter",
+        df.batter.unique(),
+        placeholder="Select a batter to analyze...",
+        help=None,
+        default=[665161]
+    )
 
-st.altair_chart(chart, use_container_width=True)
+    pitcher_att, pitcher_es = compute_pitch_attributes(df, encoder, scaler, [pitcher])
+    batter_att, batter_es = compute_pitch_attributes(df, encoder, scaler, batter,'batter')
 
-#Display the data as a table using `st.dataframe`.
-st.dataframe(
-    batter_es,
-    use_container_width=True,
-    hide_index=True
-)
+    cos_sim_score = cosine_similarity(pitcher_es, batter_es)#[0][0]
 
-chart = (
-    alt.Chart(batter_es)
-    .mark_line()
-    .properties(height=320)
-)
-
-st.altair_chart(chart, use_container_width=True)
+    cols = st.columns(len(batter)+1)
+    with cols[0]:
+        player_card(pitcher,0)
+   
+    for i,x in enumerate(batter):
+        with cols[i+1]:
+            player_card(x,cos_sim_score[0][i])
+    
+    #ptype = pitcher_es.filter(like="pitch_type_")
+    #ptype.columns = [col.replace("pitch_type_", "") for col in ptype.columns]
+    #st.bar_chart(ptype[ptype>0].iloc[0,:].sort())
+    #st.line_chart(pitcher_es.iloc[0,:].values)
+except:
+    st.write("Please select a pitcher and batter with data...")
