@@ -1,10 +1,7 @@
-import altair as alt
 import pandas as pd
 import streamlit as st
-import matplotlib.pyplot as plt
 import numpy as np
 from typing import List, Tuple
-from pybaseball.plotting import plot_strike_zone
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
 
@@ -49,7 +46,7 @@ def load_data():
 
     # Create barrel column
     df['barreled'] = df.apply(lambda row: is_barrel(row['launch_speed'], row['launch_angle']), axis=1)
-    
+    df['game_date'] = pd.to_datetime(df["game_date"],format='mixed')
     return df
 
 def encoder_scaler(df: pd.DataFrame):
@@ -64,16 +61,15 @@ def encoder_scaler(df: pd.DataFrame):
     
     return encoder, scaler
 
-def compute_pitch_attributes(df: pd.DataFrame, encoder: OneHotEncoder, scaler: StandardScaler, ids: List, ptype='pitcher'):
+def compute_pitch_attributes(df: pd.DataFrame, encoder: OneHotEncoder, scaler: StandardScaler, ids: List, subset: List, ptype='pitcher'):
     """
     In progress...
     """
-    
-    if ptype == 'batter':
-        pindex = df[(df.batter.isin(ids)) & (df.barreled==1)].index
+    if subset: 
+        pindex = df[(df[ptype].isin(ids)) & (df[subset[0]]==subset[1])].index
     else:
-        pindex = df[(df.pitcher.isin(ids)) & (df.barreled==1)].index
-        #pindex = df[(df.pitcher.isin(ids))].index
+        pindex = df[(df[ptype].isin(ids))].index
+            
 
     # Aggregate pitch characteristics
     cont_mean = df.loc[pindex].groupby(ptype)[cont_pitch_measures].mean()
@@ -122,8 +118,8 @@ try:
         default=[665161]
     )
 
-    pitcher_att, pitcher_es = compute_pitch_attributes(df, encoder, scaler, [pitcher])
-    batter_att, batter_es = compute_pitch_attributes(df, encoder, scaler, batter,'batter')
+    pitcher_att, pitcher_es = compute_pitch_attributes(df, encoder, scaler, [pitcher], subset=[])
+    batter_att, batter_es = compute_pitch_attributes(df, encoder, scaler, batter,['barreled',1],'batter')
 
     cos_sim_score = cosine_similarity(pitcher_es, batter_es)#[0][0]
 
@@ -135,9 +131,31 @@ try:
         with cols[i+1]:
             player_card(x,cos_sim_score[0][i])
     
-    #ptype = pitcher_es.filter(like="pitch_type_")
-    #ptype.columns = [col.replace("pitch_type_", "") for col in ptype.columns]
-    #st.bar_chart(ptype[ptype>0].iloc[0,:].sort())
-    #st.line_chart(pitcher_es.iloc[0,:].values)
+    def compute_metric(df: pd.DataFrame, field: str, event):
+        total_events = len(df)
+        num_events = len(df[df[field]==event])
+
+        last_game = df['game_date'].max()
+
+        df_dX = df[(df['game_date']<=last_game) & (df['game_date']>=(last_game-pd.Timedelta(days=30)))]
+
+        dX_total_events = len(df_dX)
+        dX_num_events = len(df_dX[df_dX[field]==event])
+
+        return num_events/total_events, dX_num_events/dX_total_events, last_game
+
+
+    ptype = pitcher_es.filter(like="pitch_type_")
+    ptype.columns = [col.replace("pitch_type_", "") for col in ptype.columns]
+    st.bar_chart(ptype[ptype>0].iloc[0,:])
+
+    a,b,c = compute_metric(df[df['pitcher']==pitcher],'barreled',1)
+    b_delta = ((b*30)-(a*30))/(a*30)*100
+    st.metric('Barrelled Ball Rate',value =str(round(a*30*100,1)) + "%",delta=str(round(b_delta,1)) + "%")
+    a,b,c = compute_metric(df[df['batter']==batter[0]],'barreled',1)
+    b_delta = ((b*30)-(a*30))/(a*30)*100
+    st.metric('Barrelled Ball Rate',value =str(round(a*30*100,1)) + "%",delta=str(round(b_delta,1)) + "%")
+ 
+ 
 except:
     st.write("Please select a pitcher and batter with data...")
