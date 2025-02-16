@@ -147,14 +147,15 @@ try:
 
     ptype = pitcher_es.filter(like="pitch_type_")
     ptype.columns = [col.replace("pitch_type_", "") for col in ptype.columns]
-    st.bar_chart(ptype[ptype>0].iloc[0,:])
+    #st.bar_chart(ptype[ptype>0].iloc[0,:])
+    #st.bar_chart(ptype.iloc[0,:],horizontal=True,width=100, use_container_width=False)
 
     a,b,c = compute_metric(df[df['pitcher']==pitcher],'barreled',1)
     b_delta = ((b*30)-(a*30))/(a*30)*100
     st.metric('Barrelled Ball Rate',value =str(round(a*30*100,1)) + "%",delta=str(round(b_delta,1)) + "%")
     a,b,c = compute_metric(df[df['batter']==batter[0]],'barreled',1)
     b_delta = ((b*30)-(a*30))/(a*30)*100
-    st.metric('Barrelled Ball Rate',value =str(round(a*30*100,1)) + "%",delta=str(round(b_delta,1)) + "%")
+    st.metric('Barreled Ball Rate',value =str(round(a*30*100,1)) + "%",delta=str(round(b_delta,1)) + "%")
  
  
 except:
