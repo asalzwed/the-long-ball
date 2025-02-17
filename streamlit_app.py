@@ -112,17 +112,62 @@ def compute_metric(df: pd.DataFrame, field: str, event, delta: int, date_flag=0)
 
         return [[num_events,total_events],[dX_num_events,dX_total_events]], last_game
 
-def player_card(name, ban):
+def create_gauge(player_metrics,average_metrics,factor=100):
+    dpv = (player_metrics[1][0]/player_metrics[1][1])*factor
+    tpv = (player_metrics[0][0]/player_metrics[0][1])*factor
+    apv = (average_metrics[0][0]/average_metrics[0][1])*factor
+    
+    fig = go.Figure(go.Indicator(
+        mode = "gauge+number+delta",
+        value =  dpv,
+        number_font_color="black",
+        domain = {'x': [0, 1], 'y': [0, 1]},
+        title = {'text': "Barrel Rate", 'font': {'size': 12,'color':'black'}},
+        delta = {'reference': tpv,'increasing': {'color': "green"},'decreasing': {'color':'red'}},
+        gauge = {
+            'axis': {'range': [None, 5], 'tickwidth': 1},
+            'bar': {'color': "rgba(0,0,0,0)", "thickness": 1},
+            'bgcolor': "white",
+            'borderwidth': 2,
+            'steps' : [{'range': [0, apv], 'color': "lightgray"},
+                        {'range': [dpv, tpv], 'color': "red" if dpv<tpv else "green","thickness":0.5}],
+            'threshold' : {'line': {'color': "black", 'width': 2}, 'thickness': 0.75, 'value': dpv}
+            }
+            )
+            )
+    
+    fig.update_layout(
+        autosize=False,
+        height=200,  # Adjust this value to control height
+        width=200,
+        margin=dict(l=15, r=15, t=10, b=0)  # Reduces extra spacing
+    )
+    return fig
+
+def player_card(name, ban, m1, m2):
     """Reusable Player Card Component"""
     
     with st.container():
+        
+        #st.markdown(f"#### {name}")
+        fig = create_gauge(m1, m2)
+        if fig:
+            st.plotly_chart(fig, use_container_width=True, key=name)
+        
+        st.metric("BSI", round(ban, 2))  # Stack name & metric
+
        
-        # Player Info
-        st.markdown(f"### {name}")
-        
-        # Metrics Section
-        st.metric("Barrel Score", round(ban,2))
-        
+        # # Metrics Section
+        # st.metric("BSI", round(ban,2))
+        # fig = create_gauge(m1, m2)
+        # if fig:
+        #     st.plotly_chart(fig, use_container_width=True, key=name)
+
+def metric_rate_card(name,metrics,factor=85):
+        baseline_rate = (metrics[0][0]/metrics[0][1])*factor*100
+        latest_rate = (metrics[1][0]/metrics[1][1])*factor*100
+        change_rate = (latest_rate-baseline_rate)/baseline_rate * 100
+        st.metric(name,value =str(round(latest_rate,1)) + "%",delta=str(round(change_rate,1)) + "%")       
 
 df = load_data()
 encoder, scaler = encoder_scaler(df)
@@ -150,13 +195,19 @@ try:
 
     cos_sim_score = cosine_similarity(pitcher_es, batter_es)
 
-    cols = st.columns(len(batter)+1)
+    metrics, lgame = compute_metric(df[df['pitcher_name_id']==pitcher[0]],'barreled',1,delta=30)
+    metrics2, lgame = compute_metric(df,'barreled',1,delta=30)
+    cols = st.columns([max(1, 1 if i == 0 else 1) for i in range(len(batter) + 1)])
+    #cols = st.columns(len(batter)+1)
     with cols[0]:
-        player_card(pitcher[0],0)
+        with st.expander(pitcher[0], expanded=True):
+            player_card(pitcher[0],0,metrics,metrics2)
+       
    
     for i,x in enumerate(batter):
         with cols[i+1]:
-            player_card(x,cos_sim_score[0][i])
+            with st.expander(x, expanded=True):
+                player_card(x,cos_sim_score[0][i],metrics,metrics2)
     
     
     #ptype = pitcher_es.filter(like="pitch_type_")
@@ -164,34 +215,5 @@ try:
     #st.bar_chart(ptype[ptype>0].iloc[0,:])
     #st.bar_chart(ptype.iloc[0,:],horizontal=True,width=100, use_container_width=False)
    
-    metrics, lgame = compute_metric(df[df['pitcher_name_id']==pitcher[0]],'barreled',1,delta=30)
-    
-    def metric_rate_card(name,metrics,factor=85):
-        baseline_rate = (metrics[0][0]/metrics[0][1])*factor*100
-        latest_rate = (metrics[1][0]/metrics[1][1])*factor*100
-        change_rate = (latest_rate-baseline_rate)/baseline_rate * 100
-        st.metric(name,value =str(round(latest_rate,1)) + "%",delta=str(round(change_rate,1)) + "%")
-    
-    metric_rate_card("Barrel Rate", metrics)
-
-    metrics2, lgame = compute_metric(df,'barreled',1,delta=30)
-    
-    fig = go.Figure(go.Indicator(
-    mode = "gauge+number+delta",
-    value =  (metrics[1][0]/metrics[1][1])*100,
-    number_font_color="black",
-    domain = {'x': [0, 1], 'y': [0, 1]},
-    title = {'text': "Barrel Rate (per 100)", 'font': {'size': 24,'color':'black'}},
-    delta = {'reference': (metrics[0][0]/metrics[0][1])*100,'increasing': {'color': "green"},'decreasing': {'color':'red'}},
-    gauge = {
-        'axis': {'range': [None, 5], 'tickwidth': 1},
-        'bar': {'color': "rgba(0,0,0,0)", "thickness": 1},
-        'bgcolor': "white",
-        'borderwidth': 2,
-        'steps' : [{'range': [0, (metrics2[0][0]/metrics2[0][1])*100], 'color': "lightgray"},
-                    {'range': [(metrics[1][0]/metrics[1][1])*100, (metrics[0][0]/metrics[0][1])*100], 'color': "red" if (metrics[1][0]/metrics[1][1])<(metrics[0][0]/metrics[0][1]) else "green","thickness":0.5}],
-        'threshold' : {'line': {'color': "black", 'width': 4}, 'thickness': 0.75, 'value': (metrics[1][0]/metrics[1][1])*100}}))
-    fig
- 
 except:
     st.write("Please select a pitcher and batter with data...")
