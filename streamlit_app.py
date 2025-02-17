@@ -23,6 +23,7 @@ st.markdown("""
             max-width: 500px;
             font-size: 0.6rem;
         }
+
     </style>
     """, unsafe_allow_html=True)
 
@@ -140,28 +141,21 @@ def create_gauge(player_metrics,average_metrics,factor=100):
         autosize=False,
         height=200,  # Adjust this value to control height
         width=200,
-        margin=dict(l=15, r=15, t=10, b=0)  # Reduces extra spacing
+        margin=dict(l=15, r=15, t=0, b=0)  # Reduces extra spacing
     )
     return fig
 
-def player_card(name, ban, m1, m2):
+def player_card(name, ban, m1, m2, factor=100):
     """Reusable Player Card Component"""
     
     with st.container():
         
         #st.markdown(f"#### {name}")
-        fig = create_gauge(m1, m2)
+        fig = create_gauge(m1, m2, factor)
         if fig:
             st.plotly_chart(fig, use_container_width=True, key=name)
         
         st.metric("BSI", round(ban, 2))  # Stack name & metric
-
-       
-        # # Metrics Section
-        # st.metric("BSI", round(ban,2))
-        # fig = create_gauge(m1, m2)
-        # if fig:
-        #     st.plotly_chart(fig, use_container_width=True, key=name)
 
 def metric_rate_card(name,metrics,factor=85):
         baseline_rate = (metrics[0][0]/metrics[0][1])*factor*100
@@ -195,20 +189,40 @@ try:
 
     cos_sim_score = cosine_similarity(pitcher_es, batter_es)
 
-    metrics, lgame = compute_metric(df[df['pitcher_name_id']==pitcher[0]],'barreled',1,delta=30)
-    metrics2, lgame = compute_metric(df,'barreled',1,delta=30)
-    cols = st.columns([max(1, 1 if i == 0 else 1) for i in range(len(batter) + 1)])
-    #cols = st.columns(len(batter)+1)
-    with cols[0]:
-        with st.expander(pitcher[0], expanded=True):
-            player_card(pitcher[0],0,metrics,metrics2)
-       
-   
-    for i,x in enumerate(batter):
-        with cols[i+1]:
-            with st.expander(x, expanded=True):
-                player_card(x,cos_sim_score[0][i],metrics,metrics2)
+    pmetrics, lgame  = compute_metric(df[df['pitcher_name_id']==pitcher[0]],'barreled',1,delta=30)
+    ametrics, lgame = compute_metric(df,'barreled',1,delta=30)
     
+    num_batters_per_row = 3  # Batters per row after the first row
+
+    # Ensure there are at least 2 batters to complete the first row
+    first_row_batters = batter[:2]  # First two batters
+
+    # First row: 1 pitcher + 2 batters
+    first_row_cols = st.columns(3)  # Ensure 3 columns
+
+    # Pitcher goes in the first column
+    with first_row_cols[0]:  
+        with st.expander(pitcher[0], expanded=True):
+            player_card(pitcher[0], 0, pmetrics, ametrics)
+
+    # Place the first two batters in the remaining spots
+    for i, x in enumerate(first_row_batters):
+        with first_row_cols[i + 1]:  # Start from index 1
+            with st.expander(x, expanded=True):
+                bmetrics, lgame = compute_metric(df[df['batter_name_id'] == x], 'barreled', 1, delta=30)
+                player_card(x, cos_sim_score[0][i], bmetrics, ametrics, 20)
+
+    # Remaining batters (starting from index 2)
+    remaining_batters = batter[2:]  
+    for i, x in enumerate(remaining_batters):
+        # Create a new row every 3 batters
+        if i % num_batters_per_row == 0:
+            cols = st.columns(num_batters_per_row)
+
+        with cols[i % num_batters_per_row]:  
+            with st.expander(x, expanded=True):
+                bmetrics, lgame = compute_metric(df[df['batter_name_id'] == x], 'barreled', 1, delta=30)
+                player_card(x, cos_sim_score[0][i + 2], bmetrics, ametrics,20)  # Offset index
     
     #ptype = pitcher_es.filter(like="pitch_type_")
     #ptype.columns = [col.replace("pitch_type_", "") for col in ptype.columns]
