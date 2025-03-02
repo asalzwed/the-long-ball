@@ -113,7 +113,7 @@ def compute_metric(df: pd.DataFrame, field: str, event, delta: int, date_flag=0)
 
         return [[num_events,total_events],[dX_num_events,dX_total_events]], last_game
 
-def create_gauge(player_metrics,average_metrics,factor=100):
+def create_gauge(player_metrics,average_metrics,factor=100,gsetting=4):
     dpv = (player_metrics[1][0]/player_metrics[1][1])*factor
     tpv = (player_metrics[0][0]/player_metrics[0][1])*factor
     apv = (average_metrics[0][0]/average_metrics[0][1])*factor
@@ -126,7 +126,7 @@ def create_gauge(player_metrics,average_metrics,factor=100):
         title = {'text': "Barrel Rate", 'font': {'size': 12,'color':'black'}},
         delta = {'reference': tpv,'increasing': {'color': "green"},'decreasing': {'color':'red'}},
         gauge = {
-            'axis': {'range': [None, 5], 'tickwidth': 1},
+            'axis': {'range': [None, gsetting], 'tickwidth': 1},
             'bar': {'color': "rgba(0,0,0,0)", "thickness": 1},
             'bgcolor': "white",
             'borderwidth': 2,
@@ -145,13 +145,13 @@ def create_gauge(player_metrics,average_metrics,factor=100):
     )
     return fig
 
-def player_card(name, ban, m1, m2, factor=100):
+def player_card(name, ban, m1, m2, factor=100, gsetting=4):
     """Reusable Player Card Component"""
     
     with st.container():
         
         #st.markdown(f"#### {name}")
-        fig = create_gauge(m1, m2, factor)
+        fig = create_gauge(m1, m2, factor, gsetting)
         if fig:
             st.plotly_chart(fig, use_container_width=True, key=name)
         
@@ -203,14 +203,17 @@ try:
     # Pitcher goes in the first column
     with first_row_cols[0]:  
         with st.expander(pitcher[0], expanded=True):
-            player_card(pitcher[0], 0, pmetrics, ametrics)
+            pometrics, lgame =  compute_metric(df[(df['pitcher_name_id']!=pitcher[0]) & (df['batter_name_id'].isin(batter))],'barreled',1,delta=30)
+            player_card(pitcher[0], 0, pmetrics, pometrics)
 
     # Place the first two batters in the remaining spots
     for i, x in enumerate(first_row_batters):
         with first_row_cols[i + 1]:  # Start from index 1
             with st.expander(x, expanded=True):
                 bmetrics, lgame = compute_metric(df[df['batter_name_id'] == x], 'barreled', 1, delta=30)
-                player_card(x, cos_sim_score[0][i], bmetrics, ametrics, 20)
+                bometrics, lgame =  compute_metric(df[(df['pitcher_name_id']==pitcher[0]) & (df['batter_name_id']!=x)],'barreled',1,delta=30)
+           
+                player_card(x, cos_sim_score[0][i], bmetrics, bometrics,factor=20,gsetting=2)
 
     # Remaining batters (starting from index 2)
     remaining_batters = batter[2:]  
@@ -222,7 +225,9 @@ try:
         with cols[i % num_batters_per_row]:  
             with st.expander(x, expanded=True):
                 bmetrics, lgame = compute_metric(df[df['batter_name_id'] == x], 'barreled', 1, delta=30)
-                player_card(x, cos_sim_score[0][i + 2], bmetrics, ametrics,20)  # Offset index
+                bometrics, lgame =  compute_metric(df[(df['pitcher_name_id']==pitcher[0]) & (df['batter_name_id']!=x)],'barreled',1,delta=30)
+           
+                player_card(x, cos_sim_score[0][i + 2], bmetrics, bometrics,factor=20,gsetting=2)  # Offset index
     
     #ptype = pitcher_es.filter(like="pitch_type_")
     #ptype.columns = [col.replace("pitch_type_", "") for col in ptype.columns]
