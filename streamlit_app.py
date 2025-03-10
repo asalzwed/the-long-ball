@@ -32,7 +32,7 @@ st.sidebar.header("Filters")
 st.title("⚾ The Long Ball")
 st.write(
     """
-    This app lets you examine pitcher-batter matchups with an emphasis on home run potential. 
+    This app lets you examine pitcher-batter matchups with an emphasis on barreled balls. 
     """
 )
 

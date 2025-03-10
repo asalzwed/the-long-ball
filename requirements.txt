@@ -1,6 +1,6 @@
 streamlit
 pybaseball
-sklearn
+scikit-learn
 pandas
 altair
 matplotlib
