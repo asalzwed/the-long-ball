@@ -157,19 +157,14 @@ def player_card(name, ban, m1, m2, factor=100, gsetting=4):
         
         st.metric("BSI", round(ban, 2))  # Stack name & metric
 
-def metric_rate_card(name,metrics,factor=85):
-        baseline_rate = (metrics[0][0]/metrics[0][1])*factor*100
-        latest_rate = (metrics[1][0]/metrics[1][1])*factor*100
-        change_rate = (latest_rate-baseline_rate)/baseline_rate * 100
-        st.metric(name,value =str(round(latest_rate,1)) + "%",delta=str(round(change_rate,1)) + "%")       
+df_raw = load_data()
 
-df = load_data()
-encoder, scaler = encoder_scaler(df)
+encoder, scaler = encoder_scaler(df_raw)
 try: 
-
+    
     pitcher = st.sidebar.multiselect(
         "Pitcher",
-        df.pitcher_name_id.unique(),
+        df_raw.pitcher_name_id.unique(),
         placeholder="Select a pitcher to analyze...",
         default = 'Paul Skenes (694973)',
         max_selections=1,
@@ -178,19 +173,27 @@ try:
 
     batter = st.sidebar.multiselect(
         "Batter",
-        df.batter_name_id.unique(),
+        df_raw.batter_name_id.unique(),
         placeholder="Select a batter to analyze...",
         default=['Aaron Judge (592450)','Juan Soto (665742)'],
         help=None
     )
 
-    pitcher_att, pitcher_es = compute_pitch_attributes(df, encoder, scaler, pitcher, subset=[])
-    batter_att, batter_es = compute_pitch_attributes(df, encoder, scaler, batter,['barreled',1],'batter_name_id')
+    date_range = st.sidebar.select_slider(
+        "Select Date Range",
+        options=df_raw["game_date"].sort_values().unique(),
+        value=(df_raw["game_date"].min(), df_raw["game_date"].max())  # Default range
+    )
+
+    filtered_df = df_raw[(df_raw["game_date"] >= date_range[0]) & (df_raw["game_date"] <= date_range[1])]
+
+    pitcher_att, pitcher_es = compute_pitch_attributes(filtered_df, encoder, scaler, pitcher, subset=[])
+    batter_att, batter_es = compute_pitch_attributes(filtered_df, encoder, scaler, batter,['barreled',1],'batter_name_id')
 
     cos_sim_score = cosine_similarity(pitcher_es, batter_es)
 
-    pmetrics, lgame  = compute_metric(df[df['pitcher_name_id']==pitcher[0]],'barreled',1,delta=30)
-    ametrics, lgame = compute_metric(df,'barreled',1,delta=30)
+    pmetrics, lgame  = compute_metric(filtered_df[filtered_df['pitcher_name_id']==pitcher[0]],'barreled',1,delta=30)
+    ametrics, lgame = compute_metric(filtered_df,'barreled',1,delta=30)
     
     num_batters_per_row = 3  # Batters per row after the first row
 
@@ -203,16 +206,15 @@ try:
     # Pitcher goes in the first column
     with first_row_cols[0]:  
         with st.expander(pitcher[0], expanded=True):
-            pometrics, lgame =  compute_metric(df[(df['pitcher_name_id']!=pitcher[0]) & (df['batter_name_id'].isin(batter))],'barreled',1,delta=30)
+            pometrics, lgame =  compute_metric(filtered_df[(filtered_df['pitcher_name_id']!=pitcher[0]) & (filtered_df['batter_name_id'].isin(batter))],'barreled',1,delta=30)
             player_card(pitcher[0], 0, pmetrics, pometrics)
 
     # Place the first two batters in the remaining spots
     for i, x in enumerate(first_row_batters):
         with first_row_cols[i + 1]:  # Start from index 1
             with st.expander(x, expanded=True):
-                bmetrics, lgame = compute_metric(df[df['batter_name_id'] == x], 'barreled', 1, delta=30)
-                bometrics, lgame =  compute_metric(df[(df['pitcher_name_id']==pitcher[0]) & (df['batter_name_id']!=x)],'barreled',1,delta=30)
-           
+                bmetrics, lgame = compute_metric(filtered_df[filtered_df['batter_name_id'] == x], 'barreled', 1, delta=30)
+                bometrics, lgame =  compute_metric(filtered_df[(filtered_df['pitcher_name_id']==pitcher[0]) & (filtered_df['batter_name_id']!=x)],'barreled',1,delta=30)
                 player_card(x, cos_sim_score[0][i], bmetrics, bometrics,factor=20,gsetting=2)
 
     # Remaining batters (starting from index 2)
@@ -224,9 +226,8 @@ try:
 
         with cols[i % num_batters_per_row]:  
             with st.expander(x, expanded=True):
-                bmetrics, lgame = compute_metric(df[df['batter_name_id'] == x], 'barreled', 1, delta=30)
-                bometrics, lgame =  compute_metric(df[(df['pitcher_name_id']==pitcher[0]) & (df['batter_name_id']!=x)],'barreled',1,delta=30)
-           
+                bmetrics, lgame = compute_metric(filtered_df[filtered_df['batter_name_id'] == x], 'barreled', 1, delta=30)
+                bometrics, lgame =  compute_metric(filtered_df[(filtered_df['pitcher_name_id']==pitcher[0]) & (filtered_df['batter_name_id']!=x)],'barreled',1,delta=30)
                 player_card(x, cos_sim_score[0][i + 2], bmetrics, bometrics,factor=20,gsetting=2)  # Offset index
     
     #ptype = pitcher_es.filter(like="pitch_type_")
