@@ -150,12 +150,13 @@ def player_card(name, ban, m1, m2, factor=100, gsetting=4):
     
     with st.container():
         
-        #st.markdown(f"#### {name}")
         fig = create_gauge(m1, m2, factor, gsetting)
         if fig:
             st.plotly_chart(fig, use_container_width=True, key=name)
         
-        st.metric("BSI", round(ban, 2))  # Stack name & metric
+        
+            st.metric("BSI", round(ban, 2) if ban != 0 else " - ")
+        
 
 df_raw = load_data()
 
