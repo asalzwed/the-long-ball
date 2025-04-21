@@ -27,6 +27,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
+cm = pd.read_parquet("data/current_matchup.parquet")
 
 st.sidebar.header("Filters")
 st.title("⚾ The Long Ball")
@@ -40,7 +41,6 @@ st.write(
 # reruns (e.g. if the user interacts with the widgets).
 @st.cache_data
 def load_data():
-    #df = pd.read_csv("data/restricted_data.csv")
     df = pd.read_parquet("data/restricted_data.parquet")
     def is_barrel(launch_speed, launch_angle):
         """Return 1 if the batted ball is classified as a barrel, else 0"""
@@ -62,15 +62,12 @@ def encoder_scaler(df: pd.DataFrame):
     # One-hot encode categorical attributes
     encoder = OneHotEncoder(handle_unknown='ignore')
     encoder.fit(df[cat_pitch_measures])
-    #encoded_categorical = encoder.fit_transform(df[cat_pitch_measures]).toarray()
-    #encoded_df = pd.DataFrame(encoded_categorical, columns=encoder.get_feature_names_out(cat_pitch_measures))
-    #encoded_df = pd.concat([df[['pitcher','batter']],encoded_df],axis=1)
     scaler = StandardScaler()
     scaler.fit(df[cont_pitch_measures])
     
     return encoder, scaler
 
-def compute_pitch_attributes(df: pd.DataFrame, encoder: OneHotEncoder, scaler: StandardScaler, ids: List, subset: List, ptype='pitcher_name_id'):
+def compute_pitch_attributes(df: pd.DataFrame, encoder: OneHotEncoder, scaler: StandardScaler, ids: List, subset: List, ptype='pitcher'):
     """
     In progress...
     """
@@ -79,7 +76,6 @@ def compute_pitch_attributes(df: pd.DataFrame, encoder: OneHotEncoder, scaler: S
     else:
         pindex = df[(df[ptype].isin(ids))].index
             
-
     # Aggregate pitch characteristics
     cont_mean = df.loc[pindex].groupby(ptype)[cont_pitch_measures].mean()
     cat_mode = df.loc[pindex].groupby(ptype)[cat_pitch_measures].apply(lambda x: x.mode().iloc[0])
@@ -98,6 +94,7 @@ def compute_pitch_attributes(df: pd.DataFrame, encoder: OneHotEncoder, scaler: S
     return raw_profiles.round(2), stat_profiles.round(2)
 
 def compute_metric(df: pd.DataFrame, field: str, event, delta: int, date_flag=0):
+        
         total_events = len(df)
         num_events = len(df[df[field]==event])
 
@@ -156,30 +153,17 @@ def player_card(name, ban, m1, m2, factor=100, gsetting=4):
         
         
             st.metric("BSI", round(ban, 2) if ban != 0 else " - ")
-        
 
+def create_metric(player_metrics,factor=100,gsetting=4):
+    dpv = (player_metrics[1][0]/player_metrics[1][1])*factor
+    tpv = (player_metrics[0][0]/player_metrics[0][1])*factor
+
+    return [dpv,tpv]
 df_raw = load_data()
 
 encoder, scaler = encoder_scaler(df_raw)
 try: 
     
-    pitcher = st.sidebar.multiselect(
-        "Pitcher",
-        df_raw.pitcher_name_id.unique(),
-        placeholder="Select a pitcher to analyze...",
-        default = 'Paul Skenes (694973)',
-        max_selections=1,
-        help=None
-    )
-
-    batter = st.sidebar.multiselect(
-        "Batter",
-        df_raw.batter_name_id.unique(),
-        placeholder="Select a batter to analyze...",
-        default=['Aaron Judge (592450)','Juan Soto (665742)'],
-        help=None
-    )
-
     date_range = st.sidebar.select_slider(
         "Select Date Range",
         options=df_raw["game_date"].sort_values().unique(),
@@ -187,54 +171,64 @@ try:
     )
 
     filtered_df = df_raw[(df_raw["game_date"] >= date_range[0]) & (df_raw["game_date"] <= date_range[1])]
+    pitchers = cm['pitcher_id'].unique()
 
-    pitcher_att, pitcher_es = compute_pitch_attributes(filtered_df, encoder, scaler, pitcher, subset=[])
-    batter_att, batter_es = compute_pitch_attributes(filtered_df, encoder, scaler, batter,['barreled',1],'batter_name_id')
+    pitcher_bm = []
+    for i, p in enumerate(pitchers):
+        pmetrics, lgame = compute_metric(filtered_df[filtered_df['pitcher'] == p], 'barreled', 1, delta=30)
+        test = create_metric(pmetrics)
+        pitcher_bm.append({
+            "Pitcher": filtered_df[filtered_df['pitcher'] == p]['pitcher_name_id'].unique()[0],
+            "Pitcher ID": p,
+            "Pitcher Barrel Delta": test[0],
+            "Pitcher Barrel Total": test[1]
+        })
 
-    cos_sim_score = cosine_similarity(pitcher_es, batter_es)
-
-    pmetrics, lgame  = compute_metric(filtered_df[filtered_df['pitcher_name_id']==pitcher[0]],'barreled',1,delta=30)
-    ametrics, lgame = compute_metric(filtered_df,'barreled',1,delta=30)
+    batters = cm['batter_id'].unique()
+    batter_bm = []
+    for i, b in enumerate(batters):
+        try:
+            bmetrics, lgame = compute_metric(filtered_df[filtered_df['batter'] == b], 'barreled', 1, delta=30)
+            test = create_metric(bmetrics)
+            batter_bm.append({
+                "Batter": filtered_df[filtered_df['batter'] == b]['batter_name_id'].unique()[0],
+                "Batter ID": b,
+                "Pitcher ID": cm[cm.batter_id==b]['pitcher_id'].unique()[0],
+                "Batter Barrel Delta": test[0],
+                "Batter Barrel Total": test[1]
+            })
+        except:
+            batter_bm.append({
+                "Batter": "No Data",
+                "Batter ID": b,
+                "Pitcher ID": cm[cm.batter_id==b]['pitcher_id'].unique()[0],
+                "Batter Barrel Delta": 0,
+                "Batter Barrel Total": 0
+            })
+            
+    # Convert to DataFrame
+    b0 = pd.DataFrame(pitcher_bm)
+    b1 = pd.DataFrame(batter_bm)
+    bfinal = b0.merge(b1)
+    bfinal['Combined Delta'] = bfinal['Pitcher Barrel Delta']+bfinal['Batter Barrel Delta']
+    bfinal['Combined Total'] = bfinal['Pitcher Barrel Total']+bfinal['Batter Barrel Total']
     
-    num_batters_per_row = 3  # Batters per row after the first row
+    cos_sim_score = []
+    for j,c in enumerate(bfinal['Pitcher ID']):
+        
+        b = bfinal.iloc[j]['Batter ID']
+        p = bfinal.iloc[j]['Pitcher ID']
+        
+        try:
+            batter_att, batter_es = compute_pitch_attributes(filtered_df, encoder, scaler, [b],['barreled',1],'batter')
+            pitcher_att, pitcher_es = compute_pitch_attributes(filtered_df, encoder, scaler, [p], subset=[])
+            c = cosine_similarity(pitcher_es, batter_es)
+            cos_sim_score.append(c[0][0])
+        except:
+            cos_sim_score.append(0)
 
-    # Ensure there are at least 2 batters to complete the first row
-    first_row_batters = batter[:2]  # First two batters
-
-    # First row: 1 pitcher + 2 batters
-    first_row_cols = st.columns(3)  # Ensure 3 columns
-
-    # Pitcher goes in the first column
-    with first_row_cols[0]:  
-        with st.expander(pitcher[0], expanded=True):
-            pometrics, lgame =  compute_metric(filtered_df[(filtered_df['pitcher_name_id']!=pitcher[0]) & (filtered_df['batter_name_id'].isin(batter))],'barreled',1,delta=30)
-            player_card(pitcher[0], 0, pmetrics, pometrics)
-
-    # Place the first two batters in the remaining spots
-    for i, x in enumerate(first_row_batters):
-        with first_row_cols[i + 1]:  # Start from index 1
-            with st.expander(x, expanded=True):
-                bmetrics, lgame = compute_metric(filtered_df[filtered_df['batter_name_id'] == x], 'barreled', 1, delta=30)
-                bometrics, lgame =  compute_metric(filtered_df[(filtered_df['pitcher_name_id']==pitcher[0]) & (filtered_df['batter_name_id']!=x)],'barreled',1,delta=30)
-                player_card(x, cos_sim_score[0][i], bmetrics, bometrics,factor=20,gsetting=2)
-
-    # Remaining batters (starting from index 2)
-    remaining_batters = batter[2:]  
-    for i, x in enumerate(remaining_batters):
-        # Create a new row every 3 batters
-        if i % num_batters_per_row == 0:
-            cols = st.columns(num_batters_per_row)
-
-        with cols[i % num_batters_per_row]:  
-            with st.expander(x, expanded=True):
-                bmetrics, lgame = compute_metric(filtered_df[filtered_df['batter_name_id'] == x], 'barreled', 1, delta=30)
-                bometrics, lgame =  compute_metric(filtered_df[(filtered_df['pitcher_name_id']==pitcher[0]) & (filtered_df['batter_name_id']!=x)],'barreled',1,delta=30)
-                player_card(x, cos_sim_score[0][i + 2], bmetrics, bometrics,factor=20,gsetting=2)  # Offset index
-    
-    #ptype = pitcher_es.filter(like="pitch_type_")
-    #ptype.columns = [col.replace("pitch_type_", "") for col in ptype.columns]
-    #st.bar_chart(ptype[ptype>0].iloc[0,:])
-    #st.bar_chart(ptype.iloc[0,:],horizontal=True,width=100, use_container_width=False)
-   
+    bfinal['SIM_SCORE'] = cos_sim_score
+    bfinal['X-Factor'] = (bfinal['Combined Delta'] * bfinal['Combined Total']* bfinal['SIM_SCORE']).round(2)
+    st.dataframe(bfinal[['Pitcher','Batter','X-Factor']],use_container_width=True,hide_index=True)
 except:
     st.write("Please select a pitcher and batter with data...")
